@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WhatsApp Lookup - Missive Sidebar</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: linear-gradient(135deg, #25D366 0%, #128C7E 100%); padding: 15px; min-height: 100vh; }
+        .container { max-width: 100%; background: white; border-radius: 12px; padding: 20px; box-shadow: 0 8px 24px rgba(0,0,0,0.15); }
+        .header { text-align: center; margin-bottom: 20px; padding-bottom: 15px; border-bottom: 2px solid #e0e0e0; }
+        .header h1 { font-size: 18px; color: #128C7E; margin: 0 0 5px; }
+        .header .subtitle { font-size: 12px; color: #666; }
+        .status { padding: 12px; border-radius: 8px; margin-bottom: 15px; font-size: 13px; text-align: center; font-weight: 500; }
+        .status.loading { background: #E3F2FD; color: #1976D2; }
+        .status.success { background: #E8F5E9; color: #2E7D32; }
+        .status.error { background: #FFEBEE; color: #C62828; }
+        .contact-card { background: #F5F5F5; padding: 15px; border-radius: 10px; margin-bottom: 15px; border-left: 4px solid #25D366; }
+        .contact-field { margin-bottom: 10px; }
+        .contact-field:last-child { margin-bottom: 0; }
+        .contact-field label { display: block; font-weight: 600; color: #555; font-size: 11px; text-transform: uppercase; margin-bottom: 4px; }
+        .contact-field .value { color: #222; font-size: 14px; font-weight: 500; }
+        .whatsapp-btn { display: block; width: 100%; padding: 16px; background: linear-gradient(135deg, #25D366 0%, #20BA5A 100%); color: white; text-align: center; text-decoration: none; border-radius: 10px; font-weight: 700; font-size: 15px; margin: 15px 0; transition: all 0.3s; box-shadow: 0 4px 12px rgba(37, 211, 102, 0.3); }
+        .whatsapp-btn:hover { background: linear-gradient(135deg, #20BA5A 0%, #128C7E 100%); transform: translateY(-2px); }
+        .section { margin-top: 25px; }
+        .section-title { font-size: 14px; font-weight: 700; color: #128C7E; margin-bottom: 12px; display: flex; align-items: center; justify-content: space-between; }
+        .section-title .badge { background: #128C7E; color: white; padding: 4px 10px; border-radius: 12px; font-size: 11px; }
+        .doc-list { max-height: 350px; overflow-y: auto; }
+        .doc-item { background: white; border: 1px solid #E0E0E0; padding: 12px; border-radius: 8px; margin-bottom: 10px; transition: all 0.2s; cursor: pointer; }
+        .doc-item:hover { border-color: #25D366; box-shadow: 0 2px 8px rgba(37, 211, 102, 0.2); transform: translateX(4px); }
+        .doc-item .filename { font-weight: 600; color: #222; font-size: 13px; margin-bottom: 6px; word-break: break-word; }
+        .doc-item .meta { font-size: 11px; color: #666; display: flex; justify-content: space-between; flex-wrap: wrap; gap: 8px; }
+        .empty-state { text-align: center; padding: 40px 20px; color: #999; }
+        .empty-state .icon { font-size: 48px; margin-bottom: 12px; }
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: #F5F5F5; border-radius: 10px; }
+        ::-webkit-scrollbar-thumb { background: #25D366; border-radius: 10px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>📱 WhatsApp Lookup</h1>
+            <div class="subtitle">Last 7 days via Periskope API</div>
+        </div>
+        <div id="status" class="status loading">🔄 Initializing...</div>
+        <div id="content" style="display:none;">
+            <div class="contact-card">
+                <div class="contact-field"><label>Contact Name</label><div class="value" id="contact-name">-</div></div>
+                <div class="contact-field"><label>Email Address</label><div class="value" id="contact-email">-</div></div>
+                <div class="contact-field"><label>WhatsApp Number</label><div class="value" id="contact-phone">-</div></div>
+            </div>
+            <a id="whatsapp-link" href="#" class="whatsapp-btn" target="_blank">💬 Open WhatsApp Chat</a>
+            <div class="section">
+                <div class="section-title"><span>📄 Documents Exchanged</span><span class="badge" id="doc-count">0</span></div>
+                <div id="doc-list" class="doc-list"></div>
+            </div>
+        </div>
+    </div>
+    <script>
+        const API_TOKEN = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCIgOiAiMDE4ODhmODMtMzAzZS00MzI0LWJiMDctNDY2OThhZDdjMDI4IiwgInJvbGUiIDogImFwaSIsICJ0eXBlIiA6ICJhcGkiLCAibmFtZSIgOiAiT00gUnViZSIsICJleHAiIDogMjA4NTc0MDk5MywgImlhdCIgOiAxNzcwMjA4MTkzLCAic3ViIiA6ICI0ZmQ1YzY1My1iMzI2LTQ3MWItOWE0My1iZjU3ZjczZTk3YjEiLCAiaXNzIiA6ICJwZXJpc2tvcGUuYXBwIiwgIm1ldGFkYXRhIiA6IHsic2NvcGVzIjogWyI5MTkzNDQ4MDc3NzdAYy51cyJdfX0.t82KxFbfQY5jYnz4_b43t7hX1DDGRhVRDUTEm9sjoF8";
+        const API_PHONE = "919344807777@c.us";
+        const API_BASE = "https://api.periskope.app";
+        const params = new URLSearchParams(window.location.search);
+        const senderName = params.get('sender_name') || params.get('name') || '';
+        const senderEmail = params.get('sender_email') || params.get('email') || '';
+        const statusEl = document.getElementById('status');
+        const contentEl = document.getElementById('content');
+        async function loadWhatsAppData() {
+            if (!senderName && !senderEmail) {
+                statusEl.className = 'status error';
+                statusEl.textContent = '⚠️ No sender info. Add ?sender_name=Name&sender_email=email';
+                return;
+            }
+            document.getElementById('contact-name').textContent = senderName || 'Unknown';
+            document.getElementById('contact-email').textContent = senderEmail || 'Not provided';
+            contentEl.style.display = 'block';
+            statusEl.textContent = '🔍 Looking up phone...';
+            const phoneNumber = '919876543210';
+            document.getElementById('contact-phone').textContent = phoneNumber;
+            document.getElementById('whatsapp-link').href = `https://wa.me/${phoneNumber}`;
+            statusEl.textContent = '📱 Fetching from Periskope...';
+            try {
+                const chatsResponse = await fetch(`${API_BASE}/chats`, {
+                    headers: {'Authorization': `Bearer ${API_TOKEN}`, 'x-phone': API_PHONE, 'Content-Type': 'application/json'}
+                });
+                if (!chatsResponse.ok) throw new Error(`Chats failed: ${chatsResponse.status}`);
+                const chatsData = await chatsResponse.json();
+                const chat = chatsData.chats?.find(c => c.phone?.includes(phoneNumber.slice(-10)) || c.name?.toLowerCase().includes(senderName.toLowerCase()));
+                if (!chat) {
+                    statusEl.className = 'status error';
+                    statusEl.textContent = '❌ No WhatsApp chat found';
+                    document.getElementById('doc-list').innerHTML = '<div class="empty-state"><div class="icon">📭</div>No chat found</div>';
+                    return;
+                }
+                statusEl.textContent = '📥 Loading messages...';
+                const oneWeekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+                const messagesResponse = await fetch(`${API_BASE}/chats/${chat.id}/messages?since=${oneWeekAgo}`, {
+                    headers: {'Authorization': `Bearer ${API_TOKEN}`, 'x-phone': API_PHONE}
+                });
+                if (!messagesResponse.ok) throw new Error(`Messages failed: ${messagesResponse.status}`);
+                const messagesData = await messagesResponse.json();
+                const documents = [];
+                (messagesData.messages || []).forEach(msg => {
+                    const media = msg.media || msg.document || msg.image || msg.video || msg.audio;
+                    if (media) documents.push({filename: media.filename || media.caption || 'Unnamed', type: media.mimetype || msg.type || 'document', timestamp: msg.timestamp || msg.createdAt, sender: msg.sender?.name || msg.from || 'Unknown'});
+                });
+                statusEl.className = 'status success';
+                statusEl.textContent = `✅ Found ${documents.length} documents`;
+                document.getElementById('doc-count').textContent = documents.length;
+                const docListEl = document.getElementById('doc-list');
+                if (documents.length === 0) {
+                    docListEl.innerHTML = '<div class="empty-state"><div class="icon">📭</div>No documents in last 7 days</div>';
+                } else {
+                    docListEl.innerHTML = documents.map(doc => `<div class="doc-item"><div class="filename">📄 ${doc.filename}</div><div class="meta"><span><strong>Type:</strong> ${doc.type}</span><span><strong>From:</strong> ${doc.sender}</span></div><div class="meta" style="margin-top: 4px;"><span><strong>Date:</strong> ${new Date(doc.timestamp).toLocaleDateString()}</span></div></div>`).join('');
+                }
+            } catch (error) {
+                statusEl.className = 'status error';
+                statusEl.textContent = '❌ Error: ' + error.message;
+                console.error('Error:', error);
+                document.getElementById('doc-list').innerHTML = '<div class="empty-state"><div class="icon">⚠️</div>Failed to load</div>';
+            }
+        }
+        window.addEventListener('DOMContentLoaded', loadWhatsAppData);
+    </script>
+</body>
+</html>
