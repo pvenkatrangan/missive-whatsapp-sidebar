@@ -64,35 +64,39 @@
         const PERISKOPE_API = "https://api.periskope.app";
         const COMPOSIO_API_KEY = "ak_u8gGb-oKGF2q-3GFLZwn";
 
-        // Parse Missive variables from URL
+        // Parse URL parameters - prioritize message.from_* variables
         const params = new URLSearchParams(window.location.search);
 
-        // Support multiple Missive variable formats
-        const recipientFirstName = params.get('recipient_first_name') || params.get('recipient.first_name') || params.get('first_name') || '';
-        const recipientLastName = params.get('recipient_last_name') || params.get('recipient.last_name') || params.get('last_name') || '';
-        const recipientName = params.get('recipient_name') || params.get('recipient.name') || params.get('name') || '';
-        const recipientEmail = params.get('recipient_email') || params.get('recipient.email') || params.get('email') || '';
-        const recipientPhone = params.get('recipient_phone_number') || params.get('recipient.phone_number') || params.get('phone') || '';
+        // Primary: message.from_* (sender of the message/conversation)
+        const senderEmail = params.get('message.from_email') || params.get('message_from_email') || '';
+        const senderName = params.get('message.from_name') || params.get('message_from_name') || '';
+        const senderFirstName = params.get('message.from_first_name') || params.get('message_from_first_name') || '';
+        const senderLastName = params.get('message.from_last_name') || params.get('message_from_last_name') || '';
 
-        // Fallback to message.from_* variables
-        const senderFirstName = params.get('message_from_first_name') || params.get('message.from_first_name') || '';
-        const senderLastName = params.get('message_from_last_name') || params.get('message.from_last_name') || '';
-        const senderName = params.get('message_from_name') || params.get('message.from_name') || '';
-        const senderEmail = params.get('message_from_email') || params.get('message.from_email') || '';
+        // Fallback: recipient.* variables
+        const recipientEmail = params.get('recipient.email') || params.get('recipient_email') || '';
+        const recipientName = params.get('recipient.name') || params.get('recipient_name') || '';
+        const recipientFirstName = params.get('recipient.first_name') || params.get('recipient_first_name') || '';
+        const recipientLastName = params.get('recipient.last_name') || params.get('recipient_last_name') || '';
+        const recipientPhone = params.get('recipient.phone_number') || params.get('recipient_phone_number') || '';
 
-        // Determine final values
-        const finalFirstName = recipientFirstName || senderFirstName;
-        const finalLastName = recipientLastName || senderLastName;
-        const finalName = recipientName || senderName || `${finalFirstName} ${finalLastName}`.trim();
-        const finalEmail = recipientEmail || senderEmail;
+        // Generic fallbacks
+        const genericEmail = params.get('email') || '';
+        const genericName = params.get('name') || '';
+
+        // Determine final values - prioritize message.from_email for contact lookup
+        const finalEmail = senderEmail || recipientEmail || genericEmail;
+        const finalName = senderName || recipientName || genericName || `${senderFirstName || recipientFirstName} ${senderLastName || recipientLastName}`.trim();
         const finalPhone = recipientPhone;
 
         const statusEl = document.getElementById('status');
         const contentEl = document.getElementById('content');
         const whatsappBtn = document.getElementById('whatsapp-link');
 
-        async function searchGmailContacts(query) {
+        async function searchGmailContacts(email) {
             try {
+                statusEl.textContent = `🔍 Looking up "${email}" in Gmail contacts...`;
+
                 const response = await fetch('https://backend.composio.dev/api/v1/actions/execute', {
                     method: 'POST',
                     headers: {
@@ -103,7 +107,7 @@
                         actions: [{
                             action: 'GMAIL_SEARCH_PEOPLE',
                             params: {
-                                query: query,
+                                query: email,
                                 person_fields: 'names,emailAddresses,phoneNumbers',
                                 other_contacts: true,
                                 pageSize: 10
@@ -112,14 +116,36 @@
                     })
                 });
 
-                if (!response.ok) return null;
+                if (!response.ok) {
+                    console.error('Gmail API error:', response.status);
+                    return null;
+                }
+
                 const data = await response.json();
+                console.log('Gmail search response:', data);
+
                 const results = data?.data?.results || [];
-                if (results.length > 0) {
-                    const person = results[0]?.person;
-                    const phoneNumbers = person?.phoneNumbers || [];
-                    if (phoneNumbers.length > 0) {
-                        return phoneNumbers[0].value;
+                if (results.length > 0 && results[0].response) {
+                    const responseData = results[0].response.data || {};
+                    const searchResults = responseData.results || [];
+
+                    if (searchResults.length > 0) {
+                        const person = searchResults[0].person;
+                        const phoneNumbers = person?.phoneNumbers || [];
+                        const names = person?.names || [];
+
+                        // Get name from contact
+                        if (names.length > 0) {
+                            const contactName = names[0].displayName;
+                            if (contactName) {
+                                document.getElementById('contact-name').textContent = contactName;
+                            }
+                        }
+
+                        // Get phone number
+                        if (phoneNumbers.length > 0) {
+                            return phoneNumbers[0].value;
+                        }
                     }
                 }
                 return null;
@@ -130,35 +156,29 @@
         }
 
         async function loadWhatsAppData() {
-            if (!finalName && !finalEmail && !finalPhone) {
+            if (!finalEmail && !finalName && !finalPhone) {
                 statusEl.className = 'status error';
-                statusEl.textContent = '⚠️ No sender information provided';
+                statusEl.textContent = '⚠️ No sender information provided. Pass message.from_email in URL.';
                 return;
             }
 
-            // Display sender info
+            // Display initial sender info
             document.getElementById('contact-name').textContent = finalName || 'Unknown';
             document.getElementById('contact-email').textContent = finalEmail || 'Not provided';
             contentEl.style.display = 'block';
 
-            // Step 1: Get phone number
+            // Step 1: Get phone number from contacts using email
             let phoneNumber = finalPhone;
 
-            if (!phoneNumber) {
-                statusEl.textContent = '🔍 Looking up phone number in contacts...';
-
-                // Search by email first, then by name
-                const searchQuery = finalEmail || finalName;
-                if (searchQuery) {
-                    phoneNumber = await searchGmailContacts(searchQuery);
-                }
+            if (!phoneNumber && finalEmail) {
+                phoneNumber = await searchGmailContacts(finalEmail);
             }
 
             if (!phoneNumber) {
                 statusEl.className = 'status error';
-                statusEl.textContent = '❌ No phone number found in contacts';
+                statusEl.textContent = '❌ No phone number found in Gmail contacts';
                 document.getElementById('contact-phone').textContent = 'Not found in contacts';
-                document.getElementById('doc-list').innerHTML = '<div class="empty-state"><div class="icon">📭</div><div>Phone number required for WhatsApp lookup</div></div>';
+                document.getElementById('doc-list').innerHTML = '<div class="empty-state"><div class="icon">📭</div><div>Phone number required for WhatsApp lookup. Make sure contact exists in Gmail.</div></div>';
                 return;
             }
 
